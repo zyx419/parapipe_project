@@ -12,7 +12,7 @@
                 "-n",
                 "4",
                 "-c",
-                "grep abc -> grep 123"
+                "grep abc"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
