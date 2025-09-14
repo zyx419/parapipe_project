@@ -7,8 +7,8 @@ int main(int argc, char *argv[])
 {
     char buffer[1024];
     // read stdin (only one line)
-    fgets(buffer, sizeof(buffer), stdin) != NULL;
-    printf("Read line: %s\n", buffer);
+    // fgets(buffer, sizeof(buffer), stdin) != NULL;
+    // printf("Read line: %s\n", buffer);
 
     // create a pipe
     int pipefd[2];
@@ -17,15 +17,46 @@ int main(int argc, char *argv[])
 
     // create a child process
     pid_t pid = fork();
+    if (pid == 0)
+    {
+        // close(pipefd[0]);
+        // 'child process' put 'stdout' to 'pipe write'
+        printf("grep start finished\n");
+        
+        // TODO: "grep" change to variable
+        printf("argv = %s , %s, %s, %s, %s, %s, %s\n", argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
+        char *const asd[] = {"grep", "abc", NULL};
+        
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        execvp("grep", asd);
+        perror("execvp failed");
+        _exit(1);
+    }
+    else if (pid < 0)
+    {
+        perror("fork");
+        return 1;
+    }
+    else
+    {
+        waitpid(pid, NULL, 0); 
+        printf("Child process finished\n");
 
-    // 'child process' put 'stdout' to 'pipe write'
-    dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]); 
+        char buffer1[1024];
+        int n;
 
-    close(pipefd[0]);
-    close(pipefd[1]);
+        while ((n = read(pipefd[0], buffer1, sizeof(buffer1))) > 0)
+        {
+                        printf("Read %d bytes from pipe\n", n);
 
-    //TODO: "grep" change to variable
-    execvp("grep", argv);
+            printf("buffer1 %s\n", buffer1);
+            write(STDOUT_FILENO, buffer1, n); 
+            printf("Read %d bytes from pipe\n", n);
+        }
+        close(pipefd[0]);
+    }
 
     return 0;
 }
