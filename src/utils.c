@@ -11,7 +11,7 @@ char *trim(char *str)
     while (isspace((unsigned char)*str))
         str++;
 
-    if (*str == 0) // 全是空格
+    if (*str == 0)
         return str;
 
     // delete space at last
@@ -50,25 +50,30 @@ int splitStringBy(int argc, char *argv[], char *command[])
 
     // split by "->"
     char *token = strtok(commandChar, "->");
+
     while (token != NULL && count < MAX_COMMANDS)
     {
-        commands[count++] = trim(token);
+        token = trim(token);
+        // solve malloc issue
+        command[count] = malloc(strlen(token) + 1);
+        strcpy(command[count], token);
+        count++;
         token = strtok(NULL, "->");
     }
 
     for (int i = 0; i < count; i++)
     {
-        printf("Command %d: [%s]\n", i, commands[i]);
+        printf("Command %d: [%s]\n", i, command[i]);
     }
 
     return count;
 }
 
-//test
-// void test_splitStringBy()
-// {
-//     char *test[] = {"grep abc -> grep 123 -> awk '{print $1}'", "->"};
-//     char *command[] = {"NULL"};
+// test
+//  void test_splitStringBy()
+//  {
+//      char *test[] = {"grep abc -> grep 123 -> awk '{print $1}'", "->"};
+//      char *command[] = {"NULL"};
 
 //     int n = splitStringBy(2, test, command);
 //     printf("Total commands: %d\n", n);
