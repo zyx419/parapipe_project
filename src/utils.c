@@ -49,7 +49,7 @@ int splitStringBy(int argc, char *argv[], char *command[])
     int count = 0;
 
     // split by "->"
-    char *token = strtok(commandChar, "->");
+    char *token = strtok(commandChar, argv[1]);
 
     while (token != NULL && count < MAX_COMMANDS)
     {
