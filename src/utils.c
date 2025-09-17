@@ -1,6 +1,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
+
+void log_debug(FILE *logfp, const char *str)
+{
+    if (!logfp || !str)
+        return;
+
+    fprintf(logfp, "Debug info: %s\n", str);
+    fflush(logfp);
+}
 
 // trim spaces for char*
 char *trim(char *str)
@@ -30,7 +40,16 @@ char *trim(char *str)
 
 int splitStringBy(int argc, char *argv[], char *command[])
 {
-    printf("Original string: [%s]\n", argv[0]);
+    // save log to debug.log
+    FILE *logfp = fopen("debug.log", "w");
+    char *logvar[1024];
+    if (logfp == NULL)
+    {
+        perror("fopen failed");
+        return 1;
+    }
+    sprintf(logvar, "Original string: [%s]\n", argv[0]);
+    log_debug(logfp, logvar);
     if (argc < 2)
     {
         fprintf(stderr, "Usage: %s \"command string\"\n", argv[0]);
@@ -41,8 +60,11 @@ int splitStringBy(int argc, char *argv[], char *command[])
     char commandChar[1024];
     strncpy(commandChar, argv[0], sizeof(commandChar) - 1);
     commandChar[sizeof(commandChar) - 1] = '\0'; // 确保有结尾符
-    printf("Original string: [%s]\n", commandChar);
-    printf("Original string: [%s]\n", argv[0]);
+
+    sprintf(logvar, "Original string: [%s]\n", commandChar);
+    log_debug(logfp, logvar);
+    sprintf(logvar, "Original string: [%s]\n", argv[0]);
+    log_debug(logfp, logvar);
 
     char *commands[MAX_COMMANDS];
 
@@ -63,7 +85,7 @@ int splitStringBy(int argc, char *argv[], char *command[])
 
     for (int i = 0; i < count; i++)
     {
-        printf("Command %d: [%s]\n", i, command[i]);
+        sprintf(logvar, "Command %d: [%s]\n", i, command[i]);
     }
 
     return count;
