@@ -1,4 +1,3 @@
-// main.c
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -7,11 +6,11 @@
 #include <string.h>
 #include "utils.h"
 
-int main(int argc, char *argv[])
+int stringTool(int argc, char *argv[])
 {
     // save log to debug.log
     FILE *logfp = fopen("debug.log", "w");
-    char *logvar;
+    char *logvar[1024];
     if (logfp == NULL)
     {
         perror("fopen failed");
@@ -24,12 +23,13 @@ int main(int argc, char *argv[])
     int prevPipefd = -1;
 
     // TODO: "grep" change to variable
-    sprintf(logvar, "argv = %s , %s, %s, %s, %s, %s, %s\n", argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
-    log_debug(logfp, logvar);
+    // sprintf(logvar, "argv = %s , %s, %s, %s, %s, %s, %s\n", argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
+    // log_debug(logfp, logvar);
 
     // anylize argv[5] to get command
     // char *test[] = {"grep abc -> grep 123 -> awk '{print $1}'", "->"};
     char *test[] = {"grep abc -> grep 123 -> grep 123 -> grep 123", "->"};
+    // char *test[] = argv[0];
 
     // save result to command
     char *command[10];
@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
 
     char *command2[10];
 
-    strcpy(command2[0], command[0]);
+    // strcpy(command2[0], command[0]);
 
     for (int i = 0; i < commandCount; i++)
     {

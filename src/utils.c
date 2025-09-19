@@ -85,7 +85,7 @@ int splitStringBy(int argc, char *argv[], char *command[])
 
     for (int i = 0; i < count; i++)
     {
-        sprintf(logvar, "Command %d: [%s]\n", i, command[i]);
+        // sprintf(logvar, "Command %d: [%s]\n", i, command[i]);
     }
 
     return count;
