@@ -102,7 +102,7 @@ void *sub_task(void *arg)
     char *inputPara[] = {data->cmd, buf};
     // printf("Thread command: %s \n", data->cmd);
     int fd = data->receiverPipefd[1];
-    int fd2 = data->mainPipefd[0];
+    // int fd2 = data->mainPipefd[0];
     // fd: the pipe that receiver thread reads from
     stringTool(3, inputPara, fd);
 
@@ -127,9 +127,11 @@ int main()
     }
 
     char buffer[1024];
+    int count = 0;
     while (fgets(buffer, sizeof(buffer), stdin) != NULL)
     {
         write(mainPipefd[1], buffer, strlen(buffer));
+        count++;
     }
     close(mainPipefd[1]);
 
@@ -138,9 +140,9 @@ int main()
     int ids[THREAD_COUNT];
 
     // create sub threads
-    while (1)
+    for (int j = 0; j < count / THREAD_COUNT + 1; j++)
     {
-
+        printf("Main thread: Creating batch %d of sub threads\n", j + 1);
         for (int i = 0; i < THREAD_COUNT; i++)
         {
             // argv[0]: original command string (e.g. "grep abc -> grep 123")
@@ -149,7 +151,7 @@ int main()
 
             // create thread argument
             ThreadArg inputPara;
-            inputPara.cmd = "grep abc";
+            inputPara.cmd = "grep abc -> grep 132";
             inputPara.receiverPipefd[0] = receiverPipefd[0];
             inputPara.receiverPipefd[1] = receiverPipefd[1];
             inputPara.mainPipefd[0] = mainPipefd[0];

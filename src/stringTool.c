@@ -33,6 +33,7 @@ int stringTool(int argc, char *argv[], int fd)
 
     // save previous pipe read end (-1 means no previous pipe)
     int prevPipefd = -1;
+    // initialize stdin with the string that needs be processed
     int initPipefd[2];
     pipe(initPipefd);
     dup2(initPipefd[0], STDIN_FILENO);
@@ -42,10 +43,6 @@ int stringTool(int argc, char *argv[], int fd)
     // argv[0]: original command string (e.g. "grep abc -> grep 123 -> grep 123 -> grep 123")
     char *inputPara[] = {argv[0], "->"};
     // printf("Thread %lu:Original string: [%s]\n", (unsigned long)pthread_self(), inputPara[0]);
-    pthread_mutex_lock(&printMutex);
-    printf("Thread %lu:String to be processed: [%s]\n", (unsigned long)pthread_self(), argv[1]);
-    fflush(stdout);
-    pthread_mutex_unlock(&printMutex);
 
     // save result to command
     char *splitedCommand[MAX_COMMANDS];
@@ -64,6 +61,8 @@ int stringTool(int argc, char *argv[], int fd)
     {
         // create a pipe
         int pipefd[2];
+        int lastPipefd[2];
+        pipe(lastPipefd);
 
         // is not the last command
         if (i < commandCount - 1)
@@ -80,7 +79,6 @@ int stringTool(int argc, char *argv[], int fd)
 
         sprintf(logvar, "inputPara[0] = %s inputPara[1] = %s\n", inputPara[0], inputPara[1]);
         log_debug(logfp, logvar);
-        printf(logvar);
 
         // split command by space (e.g. "grep abc" -> "grep", "abc")
         splitStringBy(2, inputPara, tempCommand);
@@ -108,11 +106,20 @@ int stringTool(int argc, char *argv[], int fd)
                 close(pipefd[1]);
             }
             // is the last command (write to stdout, do nothing)
+            else
+            {
+                //     dup2(lastPipefd[1], STDOUT_FILENO);
+                dup2(fd, STDOUT_FILENO);
+                //     close(lastPipefd[0]);
+                //     close(lastPipefd[1]);
+                close(fd);
+            }
 
             // make commandArgs for execvp (e.g. {"grep", "abc", NULL})
             char *const commandArgs[] = {tempCommand[0], tempCommand[1], NULL};
             // execute command
             execvp(tempCommand[0], commandArgs);
+
             // if execvp returns, there must be an error
             perror("execvp failed");
             _exit(1);
@@ -151,9 +158,17 @@ int stringTool(int argc, char *argv[], int fd)
             // is the last command
             else
             {
-                dup2(fd, STDOUT_FILENO);
-                // write to fd(receiver thread's pipe read end)
-                close(fd);
+                // save current pipe read end for receiver thread
+                // prevPipefd = pipefd[0];
+                // write to receiver thread pipe
+                // char readBuffer[1024];
+                // int n = read(lastPipefd[0], readBuffer, sizeof(readBuffer) - 1);
+                // if (n > 0)
+                // {
+                //     readBuffer[n] = '\0'; // null-terminate the string
+                //     write(fd, readBuffer, n);
+                // }
+                // close(lastPipefd[0]);
             }
         }
     }
@@ -163,6 +178,6 @@ int stringTool(int argc, char *argv[], int fd)
         free(splitedCommand[i]);
     }
     // fclose(logfp);
-    printf("Thread %lu:Finished\n", (unsigned long)pthread_self());
+    // printf("Thread %lu:Finished\n", (unsigned long)pthread_self());
     return 0;
 }

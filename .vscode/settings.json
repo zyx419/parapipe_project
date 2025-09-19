@@ -5,6 +5,7 @@
         "pthread.h": "c",
         "stdlib.h": "c",
         "stdio.h": "c",
-        "stringtool.h": "c"
+        "stringtool.h": "c",
+        "fcntl.h": "c"
     }
 }
