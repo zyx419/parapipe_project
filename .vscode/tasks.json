@@ -8,9 +8,9 @@
             "args": [
                 "utils.c",
                 "stringTool.c",
-                // "test.c",
                 "-fdiagnostics-color=always",
                 "-g",
+                "-pthread",
                 "${file}",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}"

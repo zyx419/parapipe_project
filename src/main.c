@@ -4,34 +4,56 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
+#include <semaphore.h>
 #include "stringTool.h"
 
+pthread_mutex_t printMutex = PTHREAD_MUTEX_INITIALIZER;
+
+typedef struct
+{
+    char *cmd;
+    char *args;
+    int mainPipefd[2];
+    int receiverPipefd[2];
+    // int fd2[2];
+} ThreadArg;
+
+/*
+    function: read from pipe non-blocking
+    arg: pipe read end
+    return: NULL
+*/
 void *receiver(void *arg)
 {
-    int fd = *(int *)arg; // 从 void* 恢复成 int
+
+    int fd = *(int *)arg;
 
     char buf[256];
 
-    // 设置非阻塞，避免阻塞线程
+    // set fd to non-blocking mode
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
     while (1)
     {
+
+        printf("receiver Thread %lu \n", (unsigned long)pthread_self());
+
         int n = read(fd, buf, sizeof(buf) - 1);
         if (n > 0)
         {
             buf[n] = '\0';
-            printf("Read: %s", buf);
+            printf("receiver Thread %lu:Read: %s\n", (unsigned long)pthread_self(), buf);
         }
         else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
         {
-            // 暂时没有数据
-            usleep(1000); // 可加延时避免忙等
+            // read every 1ms
+            usleep(1000 * 1000 * 5);
         }
         else if (n == 0)
         {
-            // EOF，管道关闭
+            // EOF
             break;
         }
         else
@@ -43,62 +65,112 @@ void *receiver(void *arg)
     return NULL;
 }
 
-// void *sub_task(int *arg)
+/*
+    function: open thread to call stringTool
+    arg: pipe read end
+    return: NULL
+*/
 void *sub_task(void *arg)
 {
-    // int *pipefd = (int *)arg;
-    char *test[] = {"grep abc -> grep 123 -> grep 123 -> grep 123", "->"};
-    int i = stringTool(2, test);
-    printf("子程序返回的管道读端i: %d\n", i);
-    // printf("子程序返回的管道读端: %d\n", pipefd[0]);
+    ThreadArg *data = (ThreadArg *)arg;
+
+    int fd1 = data->mainPipefd[0];
+    char buf[256];
+    int idx = 0;
+    char c;
+
+    while (idx < sizeof(buf) - 1)
+    {
+        ssize_t n = read(fd1, &c, 1); // 一次读一个字节
+        if (n <= 0)
+            break; // 管道关闭或错误
+        if (c == '\n')
+            break; // 遇到换行就结束，但不加入缓冲区
+        buf[idx++] = c;
+    }
+    buf[idx] = '\0'; // 字符串结束符
+    if (idx > 0)
+    {
+        pthread_mutex_lock(&printMutex);
+        printf("work Thread %lu: Read first line: %s\n", (unsigned long)pthread_self(), buf);
+        fflush(stdout);
+        pthread_mutex_unlock(&printMutex);
+    }
+
+    // inputPara[0]: original command string (e.g. "grep abc -> grep 123")
+    // inputPara[1]: string that needs be processed (e.g. "abc 123")
+    char *inputPara[] = {data->cmd, buf};
+    // printf("Thread command: %s \n", data->cmd);
+    int fd = data->receiverPipefd[1];
+    int fd2 = data->mainPipefd[0];
+    // fd: the pipe that receiver thread reads from
+    stringTool(3, inputPara, fd);
 
     return NULL;
 }
-// void *sub_task(int *arg)
-// {
-//     int *pipefd = (int *)arg;
-//     int i = testThread(pipefd);
-//     printf("子程序返回的管道读端i: %d\n", i);
-//     printf("子程序返回的管道读端: %d\n", pipefd[0]);
-
-//     return NULL;
-// }
 
 int main()
 {
-    int pipefd[2];
-    pipe(pipefd);
-    // 创建接收线程
+    // define a pipe that receiver thread reads from
+    int receiverPipefd[2];
+    pipe(receiverPipefd);
+    // define a pipe that main thread writes to
+    int mainPipefd[2];
+    pipe(mainPipefd);
 
-    // pthread_t idsa;
-    // if (pthread_create(&idsa, NULL, receiver, &pipefd[0]) != 0)
-    // {
-    //     perror("线程创建失败");
-    //     exit(1);
-    // }
+    // create receiver thread
+    pthread_t receiverThread;
+    if (pthread_create(&receiverThread, NULL, receiver, &receiverPipefd[0]) != 0)
+    {
+        perror("thread create failed");
+        exit(1);
+    }
+
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), stdin) != NULL)
+    {
+        write(mainPipefd[1], buffer, strlen(buffer));
+    }
+    close(mainPipefd[1]);
 
     const int THREAD_COUNT = 3;
     pthread_t threads[THREAD_COUNT];
     int ids[THREAD_COUNT];
 
-    // 主程序调用子程序时，多开线程执行
-    for (int i = 0; i < THREAD_COUNT; i++)
+    // create sub threads
+    while (1)
     {
-        ids[i] = i + 1;
-        if (pthread_create(&threads[i], NULL, sub_task, pipefd) != 0)
+
+        for (int i = 0; i < THREAD_COUNT; i++)
         {
-            perror("线程创建失败");
-            exit(1);
+            // argv[0]: original command string (e.g. "grep abc -> grep 123")
+            // argv[1]: string read from STDIN that needs be processed (e.g. "abc 123")
+            // argv[2]: the pipe that receiver thread reads from
+
+            // create thread argument
+            ThreadArg inputPara;
+            inputPara.cmd = "grep abc";
+            inputPara.receiverPipefd[0] = receiverPipefd[0];
+            inputPara.receiverPipefd[1] = receiverPipefd[1];
+            inputPara.mainPipefd[0] = mainPipefd[0];
+            inputPara.mainPipefd[1] = mainPipefd[1];
+
+            ids[i] = i + 1;
+            if (pthread_create(&threads[i], NULL, sub_task, &inputPara) != 0)
+            {
+                perror("thread create failed");
+                exit(1);
+            }
+        }
+
+        // wait for sub threads to finish
+        for (int i = 0; i < THREAD_COUNT; i++)
+        {
+            pthread_join(threads[i], NULL);
         }
     }
+    pthread_join(receiverThread, NULL);
 
-    // 等待所有子线程结束
-    for (int i = 0; i < THREAD_COUNT; i++)
-    {
-        pthread_join(threads[i], NULL);
-    }
-    // pthread_join(idsa, NULL);
-
-    printf("主程序结束\n");
+    // printf("sub threads finish\n");
     return 0;
 }

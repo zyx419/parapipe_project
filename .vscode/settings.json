@@ -4,6 +4,7 @@
         "wait.h": "c",
         "pthread.h": "c",
         "stdlib.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "stringtool.h": "c"
     }
 }
