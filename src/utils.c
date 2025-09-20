@@ -2,19 +2,15 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <pthread.h>
+#include <fcntl.h>
 
 // todo: change to variable
 #define MAX_COMMANDS 10
 
-// log debug info to file
-void log_debug(FILE *logfp, const char *str)
-{
-    if (!logfp || !str)
-        return;
-
-    fprintf(logfp, "Debug info: %s\n", str);
-    fflush(logfp);
-}
 
 // trim spaces for char*
 char *trim(char *str)
@@ -50,17 +46,7 @@ char *trim(char *str)
 // todo: move resultCommands to argv
 int splitStringBy(int argc, char *argv[], char *resultCommands[])
 {
-    // save log to debug.log
-    FILE *logfp = fopen("debug.log", "w");
-    char *logvar[1024];
-    if (logfp == NULL)
-    {
-        perror("fopen failed");
-        return 1;
-    }
 
-    sprintf(logvar, "Original string: [%s]\n", argv[0]);
-    log_debug(logfp, logvar);
 
     // oriCommandStr (e.g. "grep abc -> grep 123 -> awk '{print $1}'");
     char oriCommandStr[1024];
@@ -69,8 +55,6 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
     // ensure null-termination
     oriCommandStr[sizeof(oriCommandStr) - 1] = '\0';
 
-    sprintf(logvar, "original command string: [%s]\n", oriCommandStr);
-    log_debug(logfp, logvar);
 
     // define commands array to save split result(e.g."grep abc")
     char *commands[MAX_COMMANDS];
@@ -92,11 +76,130 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
         // NULL means get next token
         token = strtok(NULL, seperater);
 
-        sprintf(logvar, "Splited Command %d: [%s]\n", count, resultCommands[count]);
-        log_debug(logfp, logvar);
     }
 
-    // fclose(logfp);
 
     return count;
+}
+
+/*
+    function: execute piped commands
+    argv[0]: original command string (e.g. "grep abc -> grep 123")
+    argv[1]: string that needs be processed (e.g. "abc 123")
+    argv[2]: the pipe that receiver thread reads from
+    return: the pipe that receiver thread reads from
+*/
+int stringTool(int argc, char *argv[], int fd)
+{
+    // save previous pipe read end (-1 means no previous pipe)
+    int prevPipefd = -1;
+
+    // save original stdin
+    int original_stdin = dup(STDIN_FILENO);
+
+    // put pipe data to stdin for first loop
+    int initPipefd[2];
+    pipe(initPipefd);
+    dup2(initPipefd[0], STDIN_FILENO);
+    // write data to pipe
+    write(initPipefd[1], argv[1], strlen(argv[1]));
+    close(initPipefd[1]);
+
+    // argv[0]: original command string (e.g. "grep abc -> grep 123 -> grep 123 -> grep 123")
+    char *inputPara[] = {argv[0], "->"};
+
+    // save result to command
+    char *splitedCommand[MAX_COMMANDS];
+
+    // execute splitStringBy function get command count and splitedCommand[]
+    int commandCount = splitStringBy(2, inputPara, splitedCommand);
+
+    // Linux command breakdown (e.g. "grep" , "abc")
+    char *tempCommand[2];
+
+    char buffer[1024];
+
+    // create child process in a loop to execute each command(e.g. "grep abc")
+    for (int i = 0; i < commandCount; i++)
+    {
+        // create a pipe
+        int pipefd[2];
+
+        // is not the last command
+        if (i < commandCount - 1)
+        {
+            pipe(pipefd);
+        }
+
+        inputPara[0] = splitedCommand[i];
+        inputPara[1] = " ";
+
+        // split command by space (e.g. "grep abc" -> "grep", "abc")
+        splitStringBy(2, inputPara, tempCommand);
+
+        // create a child process
+        pid_t pid = fork();
+
+        // is child process
+        if (pid == 0)
+        {
+            // is not the first command
+            if (prevPipefd != -1)
+            {
+                // read from previous pipe(instead of stdin)
+                dup2(prevPipefd, STDIN_FILENO);
+                close(prevPipefd);
+            }
+
+            // is not the last command
+            if (i < commandCount - 1)
+            {
+                // write to current pipe(instead of stdout)
+                dup2(pipefd[1], STDOUT_FILENO);
+                close(pipefd[1]);
+            }
+            // is the last command (write to stdout, do nothing)
+            else
+            {
+                // write stdout to fd (the pipe that receiver thread reads from)
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
+            }
+
+            // make commandArgs for execvp (e.g. {"grep", "abc", NULL})
+            char *const commandArgs[] = {tempCommand[0], tempCommand[1], NULL};
+            // execute command
+            execvp(tempCommand[0], commandArgs);
+
+            // if execvp returns, there must be an error
+            perror("execvp failed");
+            _exit(1);
+        }
+        // is parent process
+        else
+        {
+            // wait for child process to finish
+            waitpid(pid, NULL, 0);
+
+            // is not the last command
+            if (i < commandCount - 1)
+            {
+                // close current pipe write end
+                close(pipefd[1]);
+                // save current pipe read end for next command
+                prevPipefd = pipefd[0];
+            }
+        }
+    }
+
+    for (int i = 0; i < commandCount; i++)
+    {
+        free(splitedCommand[i]);
+    }
+    
+    // restore original stdin
+    dup2(original_stdin, STDIN_FILENO);
+    close(original_stdin);
+    
+    return 0;
 }
