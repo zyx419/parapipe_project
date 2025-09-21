@@ -8,6 +8,9 @@
 #include <pthread.h>
 #include <fcntl.h>
 
+// External mutex declarations
+extern pthread_mutex_t output_pipe_write_mutex;
+
 // todo: change to variable
 #define MAX_COMMANDS 10
 
@@ -46,8 +49,6 @@ char *trim(char *str)
 // todo: move resultCommands to argv
 int splitStringBy(int argc, char *argv[], char *resultCommands[])
 {
-
-
     // oriCommandStr (e.g. "grep abc -> grep 123 -> awk '{print $1}'");
     char oriCommandStr[1024];
     // copy argv[0] to oriCommandStr
@@ -75,7 +76,6 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
         count++;
         // NULL means get next token
         token = strtok(NULL, seperater);
-
     }
 
 
@@ -91,6 +91,8 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
 */
 int stringTool(int argc, char *argv[], int fd)
 {
+    // printf("DEBUG: stringTool start processing: %s\n", argv[1]);
+    
     // save previous pipe read end (-1 means no previous pipe)
     int prevPipefd = -1;
 
@@ -163,7 +165,7 @@ int stringTool(int argc, char *argv[], int fd)
             {
                 // write stdout to fd (the pipe that receiver thread reads from)
                 dup2(fd, STDOUT_FILENO);
-                close(fd);
+                // Don't close fd here - let parent process handle it
             }
 
             // make commandArgs for execvp (e.g. {"grep", "abc", NULL})

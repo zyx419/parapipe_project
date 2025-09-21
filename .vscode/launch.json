@@ -8,9 +8,9 @@
             "program": "${fileDirname}/${fileBasenameNoExtension}",
             "args": [
                 "<",
-                "input.txt",
+                "bigfile.txt",
                 "-n",
-                "10",
+                "3",
                 "-c",
                 "grep abc"
             ],
