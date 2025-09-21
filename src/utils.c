@@ -38,7 +38,6 @@ char *trim(char *str)
     return str;
 }
 
-//
 /*
     function: split string by separator, save to resultCommands[]
     argv[0]: original command string (e.g. "grep abc -> grep 123 -> awk '{print $1}'")
@@ -46,7 +45,6 @@ char *trim(char *str)
     resultCommands[]: array to save split commands (e.g. "grep abc")
     return: command count
 */
-// todo: move resultCommands to argv
 int splitStringBy(int argc, char *argv[], char *resultCommands[])
 {
     // oriCommandStr (e.g. "grep abc -> grep 123 -> awk '{print $1}'");
@@ -78,7 +76,6 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
         token = strtok(NULL, seperater);
     }
 
-
     return count;
 }
 
@@ -86,8 +83,8 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
     function: execute piped commands
     argv[0]: original command string (e.g. "grep abc -> grep 123")
     argv[1]: string that needs be processed (e.g. "abc 123")
-    argv[2]: the pipe that receiver thread reads from
-    return: the pipe that receiver thread reads from
+    argv[2]: the pipe that receiver thread reads from（output pipe write end）
+    return: 0
 */
 int stringTool(int argc, char *argv[], int fd)
 {
@@ -165,7 +162,6 @@ int stringTool(int argc, char *argv[], int fd)
             {
                 // write stdout to fd (the pipe that receiver thread reads from)
                 dup2(fd, STDOUT_FILENO);
-                // Don't close fd here - let parent process handle it
             }
 
             // make commandArgs for execvp (e.g. {"grep", "abc", NULL})

@@ -200,6 +200,8 @@ int main(int argc, char *argv[])
 
     // default thread count 2
     int worker_thread_count = 2;
+    char *command = NULL;
+    
     for (int i = 1; i < argc; i++)
     {
         if (strcmp(argv[i], "-n") == 0 && i + 1 < argc)
@@ -209,24 +211,35 @@ int main(int argc, char *argv[])
             {
                 worker_thread_count = 2;
             }
-            break;
         }
+        else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc)
+        {
+            command = argv[i + 1];
+        }
+    }
+    
+    // 检查是否提供了命令参数
+    if (command == NULL)
+    {
+        fprintf(stderr, "Error: Command parameter (-c) is required\n");
+        fprintf(stderr, "Usage: %s -c \"command\" [-n thread_count]\n", argv[0]);
+        exit(1);
     }
 
     pthread_t worker_threads[worker_thread_count];
     int thread_ids[worker_thread_count];
 
+    // create worker thread arguments
+    WorkerThreadArgs worker_args;
+    worker_args.command = command;
+    worker_args.output_pipe[0] = output_pipe[0];
+    worker_args.output_pipe[1] = output_pipe[1];
+    worker_args.input_pipe[0] = input_pipe[0];
+    worker_args.input_pipe[1] = input_pipe[1];
+
     // create worker threads
     for (int i = 0; i < worker_thread_count; i++)
     {
-        // create worker thread arguments
-        WorkerThreadArgs worker_args;
-        worker_args.command = "grep abc -> grep 12";
-        worker_args.output_pipe[0] = output_pipe[0];
-        worker_args.output_pipe[1] = output_pipe[1];
-        worker_args.input_pipe[0] = input_pipe[0];
-        worker_args.input_pipe[1] = input_pipe[1];
-
         thread_ids[i] = i + 1;
         if (pthread_create(&worker_threads[i], NULL, worker_thread, &worker_args) != 0)
         {
