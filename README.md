@@ -5,6 +5,7 @@
 The program `parapipe` is compiled from two C source files, `parapipe.c` and `utils.c`, using the following command:
 
 ```bash
+cd src/
 gcc parapipe.c utils.c -o parapipe
 ```
 ## Project structure
