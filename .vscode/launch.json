@@ -12,7 +12,7 @@
                 "-n",
                 "3",
                 "-c",
-                "grep abc"
+                "grep abc -> grep 123 -> awk '{print $1}' -> sort -u -> wc -l"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

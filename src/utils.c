@@ -14,7 +14,6 @@ extern pthread_mutex_t output_pipe_write_mutex;
 // todo: change to variable
 #define MAX_COMMANDS 10
 
-
 // trim spaces for char*
 char *trim(char *str)
 {
@@ -54,7 +53,6 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
     // ensure null-termination
     oriCommandStr[sizeof(oriCommandStr) - 1] = '\0';
 
-
     // define commands array to save split result(e.g."grep abc")
     char *commands[MAX_COMMANDS];
 
@@ -62,18 +60,64 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
     int count = 0;
 
     char *seperater = argv[1];
-    // split by seperater
-    char *token = strtok(oriCommandStr, seperater);
-    while (token != NULL && count < MAX_COMMANDS)
+    char *start = oriCommandStr;
+    char *found;
+
+    // split by separator
+    while ((found = strstr(start, seperater)) != NULL && count < MAX_COMMANDS)
     {
-        // trim space
-        token = trim(token);
+        // null-terminate the current token
+        *found = '\0';
+        char *trimmed = trim(start);
         // solve malloc issue
-        resultCommands[count] = malloc(strlen(token) + 1);
-        strcpy(resultCommands[count], token);
+        resultCommands[count] = malloc(strlen(trimmed) + 1);
+        strcpy(resultCommands[count], trimmed);
         count++;
-        // NULL means get next token
-        token = strtok(NULL, seperater);
+
+        // move to after the separator
+        start = found + strlen(seperater);
+    }
+
+    // add the last token (after the last separator)
+    if (*start != '\0' && count < MAX_COMMANDS)
+    {
+        char *trimmed = trim(start);
+        resultCommands[count] = malloc(strlen(trimmed) + 1);
+        strcpy(resultCommands[count], trimmed);
+        count++;
+    }
+
+    // support "awk '{print \$1}" command: if resultCommands[2]!=NULL, merage [2] to [1]
+    if (count >= 3 && resultCommands[2] != NULL)
+    {
+        // merge tempCommand[1] and tempCommand[2] with space
+        int len1 = strlen(resultCommands[1]);
+        int len2 = strlen(resultCommands[2]);
+        char *merged = malloc(len1 + len2 + 2); // +2 for space and null terminator
+        strcpy(merged, resultCommands[1]);
+        strcat(merged, " ");
+        strcat(merged, resultCommands[2]);
+
+        // remove quotes
+        char *quote_start = strchr(merged, '\'');
+        if (quote_start != NULL)
+        {
+            char *quote_end = strchr(quote_start + 1, '\'');
+            if (quote_end != NULL)
+            {
+                // remove quotes
+                int quote_len = quote_end - quote_start - 1;
+                memmove(quote_start, quote_start + 1, quote_len);
+                memmove(quote_start + quote_len, quote_end + 1, strlen(quote_end + 1) + 1);
+            }
+        }
+
+        free(resultCommands[1]);
+        free(resultCommands[2]);
+        resultCommands[1] = merged;
+        resultCommands[2] = NULL;
+        // change count to 2
+        count = 2;
     }
 
     return count;
@@ -89,7 +133,7 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
 int stringTool(int argc, char *argv[], int fd)
 {
     // printf("DEBUG: stringTool start processing: %s\n", argv[1]);
-    
+
     // save previous pipe read end (-1 means no previous pipe)
     int prevPipefd = -1;
 
@@ -194,10 +238,10 @@ int stringTool(int argc, char *argv[], int fd)
     {
         free(splitedCommand[i]);
     }
-    
+
     // restore original stdin
     dup2(original_stdin, STDIN_FILENO);
     close(original_stdin);
-    
+
     return 0;
 }
