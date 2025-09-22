@@ -23,20 +23,24 @@ typedef struct
 } WorkerThreadArgs;
 
 /*
-    function: input reader thread that reads from stdin and writes to input pipe
+    function: input reader thread that reads from stdin and writes to n pipes
     arg: input pipe array
     return: NULL
 */
 void *input_reader(void *arg)
 {
-    int *input_pipe = (int *)arg;
+    int **input_pipes = (int **)arg;
+    int pipe_count = input_pipes[0][0]; // first element stores pipe count
     char input_line[1024];
     int input_line_count = 0;
+    int current_pipe = 0;
 
     while (fgets(input_line, sizeof(input_line), stdin) != NULL)
     {
+        // write line to current pipe
+        int current_pipe_fd = input_pipes[current_pipe + 1][1]; // +1 because first element is count
         pthread_mutex_lock(&input_pipe_write_mutex);
-        ssize_t written = write(input_pipe[1], input_line, strlen(input_line));
+        ssize_t written = write(current_pipe_fd, input_line, strlen(input_line));
         pthread_mutex_unlock(&input_pipe_write_mutex);
         input_line_count++;
 
@@ -46,14 +50,14 @@ void *input_reader(void *arg)
             break;
         }
 
-        if (input_line_count % 50 == 0)
-        {
-            // printf("DEBUG: Input reader processed %d lines\n", input_line_count);
-        }
+        // round-robin to next pipe
+        current_pipe = (current_pipe + 1) % pipe_count;
     }
-    // printf("DEBUG: Input reader finished, total lines: %d\n", input_line_count);
 
-    close(input_pipe[1]);
+    // close all pipe write ends
+    for (int i = 0; i < pipe_count; i++) {
+        close(input_pipes[i + 1][1]); // +1 because first element is count
+    }
     return NULL;
 }
 
@@ -113,7 +117,7 @@ void *result_collector(void *arg)
 }
 
 /*
-    function: worker thread that processes input lines
+    function: worker thread that processes input data in batch
     arg: worker thread arguments
     return: NULL
 */
@@ -124,40 +128,23 @@ void *worker_thread(void *arg)
     int input_pipe_fd = args->input_pipe[0];
     int output_pipe_fd = args->output_pipe[1];
 
-    // process data until no input data
-    while (1)
-    {
-        char buf[256];
-        int idx = 0;
-        char c;
+    // read all data from own pipe once with fixed buffer
+    char buf[32768]; // 32KB fixed buffer
+    int total_read = 0;
+    ssize_t n;
 
-        // read one line from pipe
-        while (idx < sizeof(buf) - 1)
-        {
-            // solve thread conflict problem
-            pthread_mutex_lock(&input_pipe_read_mutex);
-            ssize_t n = read(input_pipe_fd, &c, 1);
-            pthread_mutex_unlock(&input_pipe_read_mutex);
-
-            if (n <= 0)
-            {
-                buf[idx] = '\0';
-                // "idx == 0" means no data in input pipe
-                if (idx == 0)
-                {
-                    // exit work thread
-                    return NULL;
-                }
-                break;
-            }
-            if (c == '\n')
-            {
-                buf[idx] = '\0';
-                break;
-            }
-            buf[idx++] = c;
+    // read all available data from pipe
+    while ((n = read(input_pipe_fd, buf + total_read, sizeof(buf) - total_read - 1)) > 0) {
+        total_read += n;
+        
+        // if buffer is full, stop reading
+        if (total_read >= sizeof(buf) - 1) {
+            break;
         }
+    }
+    buf[total_read] = '\0';
 
+    if (total_read > 0) {
         // inputPara[0]: original command string (e.g. "grep abc -> grep 123")
         // inputPara[1]: string that needs be processed (e.g. "abc 123")
         char *command_args[] = {args->command, buf};
@@ -166,9 +153,10 @@ void *worker_thread(void *arg)
         pthread_mutex_lock(&string_tool_mutex);
 
         // call stringTool function to process the line, stringTool will put result to output_pipe_fd
-        stringTool(3, command_args, output_pipe_fd);
+        stringTool(command_args, output_pipe_fd);
         pthread_mutex_unlock(&string_tool_mutex);
     }
+
     return NULL;
 }
 
@@ -177,24 +165,12 @@ int main(int argc, char *argv[])
     // define output pipe for result collection
     int output_pipe[2];
     pipe(output_pipe);
-    // define input pipe for data distribution
-    int input_pipe[2];
-    pipe(input_pipe);
 
     // create result collector thread
     pthread_t receiver_thread;
     if (pthread_create(&receiver_thread, NULL, result_collector, &output_pipe[0]) != 0)
     {
         perror("thread create failed");
-        exit(1);
-    }
-
-    // create input reader thread
-    pthread_t input_reader_thread;
-    int *input_pipe_ptr = input_pipe;
-    if (pthread_create(&input_reader_thread, NULL, input_reader, input_pipe_ptr) != 0)
-    {
-        perror("input reader thread creation failed");
         exit(1);
     }
 
@@ -226,22 +202,42 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    // create n input pipes for round-robin distribution
+    int **input_pipes = malloc((worker_thread_count + 1) * sizeof(int*));
+    input_pipes[0] = malloc(2 * sizeof(int));
+    input_pipes[0][0] = worker_thread_count; // store pipe count in first element
+    
+    for (int i = 0; i < worker_thread_count; i++) {
+        input_pipes[i + 1] = malloc(2 * sizeof(int));
+        pipe(input_pipes[i + 1]);
+    }
+
+    // create input reader thread
+    pthread_t input_reader_thread;
+    if (pthread_create(&input_reader_thread, NULL, input_reader, input_pipes) != 0)
+    {
+        perror("input reader thread creation failed");
+        exit(1);
+    }
+
     pthread_t worker_threads[worker_thread_count];
     int thread_ids[worker_thread_count];
 
-    // create worker thread arguments
-    WorkerThreadArgs worker_args;
-    worker_args.command = command;
-    worker_args.output_pipe[0] = output_pipe[0];
-    worker_args.output_pipe[1] = output_pipe[1];
-    worker_args.input_pipe[0] = input_pipe[0];
-    worker_args.input_pipe[1] = input_pipe[1];
+    // create worker thread arguments for each thread
+    WorkerThreadArgs worker_args[worker_thread_count];
+    for (int i = 0; i < worker_thread_count; i++) {
+        worker_args[i].command = command;
+        worker_args[i].output_pipe[0] = output_pipe[0];
+        worker_args[i].output_pipe[1] = output_pipe[1];
+        worker_args[i].input_pipe[0] = input_pipes[i + 1][0]; // read end
+        worker_args[i].input_pipe[1] = input_pipes[i + 1][1]; // write end
+    }
 
     // create worker threads
     for (int i = 0; i < worker_thread_count; i++)
     {
         thread_ids[i] = i + 1;
-        if (pthread_create(&worker_threads[i], NULL, worker_thread, &worker_args) != 0)
+        if (pthread_create(&worker_threads[i], NULL, worker_thread, &worker_args[i]) != 0)
         {
             perror("worker thread creation failed");
             exit(1);
@@ -262,6 +258,12 @@ int main(int argc, char *argv[])
 
     // wait for receiver thread to finish
     pthread_join(receiver_thread, NULL);
+
+    // cleanup memory
+    for (int i = 0; i <= worker_thread_count; i++) {
+        free(input_pipes[i]);
+    }
+    free(input_pipes);
 
     return 0;
 }

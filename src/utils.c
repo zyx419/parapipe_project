@@ -44,7 +44,7 @@ char *trim(char *str)
     resultCommands[]: array to save split commands (e.g. "grep abc")
     return: command count
 */
-int splitStringBy(int argc, char *argv[], char *resultCommands[])
+int splitStringBy(char *argv[], char *resultCommands[])
 {
     // oriCommandStr (e.g. "grep abc -> grep 123 -> awk '{print $1}'");
     char oriCommandStr[1024];
@@ -127,10 +127,10 @@ int splitStringBy(int argc, char *argv[], char *resultCommands[])
     function: execute piped commands
     argv[0]: original command string (e.g. "grep abc -> grep 123")
     argv[1]: string that needs be processed (e.g. "abc 123")
-    argv[2]: the pipe that receiver thread reads from（output pipe write end）
+    fd: the pipe that receiver thread reads from（output pipe write end）
     return: 0
 */
-int stringTool(int argc, char *argv[], int fd)
+int stringTool(char *argv[], int fd)
 {
     // printf("DEBUG: stringTool start processing: %s\n", argv[1]);
 
@@ -155,7 +155,7 @@ int stringTool(int argc, char *argv[], int fd)
     char *splitedCommand[MAX_COMMANDS];
 
     // execute splitStringBy function get command count and splitedCommand[]
-    int commandCount = splitStringBy(2, inputPara, splitedCommand);
+    int commandCount = splitStringBy(inputPara, splitedCommand);
 
     // Linux command breakdown (e.g. "grep" , "abc")
     char *tempCommand[2];
@@ -178,7 +178,7 @@ int stringTool(int argc, char *argv[], int fd)
         inputPara[1] = " ";
 
         // split command by space (e.g. "grep abc" -> "grep", "abc")
-        splitStringBy(2, inputPara, tempCommand);
+        splitStringBy(inputPara, tempCommand);
 
         // create a child process
         pid_t pid = fork();
