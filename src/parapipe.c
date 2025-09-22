@@ -128,12 +128,11 @@ void *worker_thread(void *arg)
     int input_pipe_fd = args->input_pipe[0];
     int output_pipe_fd = args->output_pipe[1];
 
-    // read all data from own pipe once with fixed buffer
-    char buf[32768]; // 32KB fixed buffer
+    char buf[32768];
     int total_read = 0;
     ssize_t n;
 
-    // read all available data from pipe
+    // read all data from pipe
     while ((n = read(input_pipe_fd, buf + total_read, sizeof(buf) - total_read - 1)) > 0) {
         total_read += n;
         
@@ -194,7 +193,6 @@ int main(int argc, char *argv[])
         }
     }
     
-    // 检查是否提供了命令参数
     if (command == NULL)
     {
         fprintf(stderr, "Error: Command parameter (-c) is required\n");

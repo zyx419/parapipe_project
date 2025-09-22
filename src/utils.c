@@ -87,8 +87,8 @@ int splitStringBy(char *argv[], char *resultCommands[])
         count++;
     }
 
-    // support "awk '{print \$1}" command: if resultCommands[2]!=NULL, merage [2] to [1]
-    if (count >= 3 && resultCommands[2] != NULL)
+    // support "awk '{print \$1}" command: if separator is space and resultCommands[2]!=NULL, merge [2] to [1]
+    if (strcmp(argv[1], " ") == 0 && count >= 3 && resultCommands[2] != NULL)
     {
         // merge tempCommand[1] and tempCommand[2] with space
         int len1 = strlen(resultCommands[1]);
